@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# dataset (~150 MB, downloaded separately) and generated reports
+creditcard.csv
+reports/
