@@ -1,130 +1,65 @@
-# Financial Fraud Detection using Machine Learning
+# Financial Fraud Detection with Machine Learning
 
-## Overview
+Detects fraudulent credit card transactions in a dataset where only **0.17%** of transactions are fraud
+(492 of 284,807). The project focuses on doing the evaluation honestly: on data this imbalanced, a model
+that predicts "legitimate" for everything scores **99.83% accuracy and catches zero fraud**, so accuracy
+is not used to judge the models.
 
-Financial fraud is a major challenge in digital payment systems. This project uses machine learning techniques to detect fraudulent credit card transactions. The model is trained on a real-world dataset and learns patterns that help classify transactions as **fraudulent** or **legitimate**.
+## Results (test set: 56,962 transactions, 99 frauds)
 
-The goal of this project is to demonstrate how machine learning can be applied to real-world financial data to build intelligent fraud detection systems.
+| Model | Precision | Recall | F1 | PR-AUC | ROC-AUC | Frauds caught | False alarms |
+|---|---|---|---|---|---|---|---|
+| Always "legitimate" (baseline) | – | 0.00 | – | – | – | 0 / 99 | 0 |
+| Logistic Regression | 0.886 | 0.788 | 0.834 | 0.758 | 0.966 | 78 / 99 | 10 |
+| **Random Forest** | **0.931** | **0.818** | **0.871** | **0.875** | **0.977** | **81 / 99** | **6** |
 
----
+The Random Forest flags 87 transactions, 81 of which are real fraud, out of 56,962. These numbers are
+produced by the `train` job in GitHub Actions on the full dataset (see the latest CI run; `metrics.json`
+and `pr_curve.png` are uploaded as an artifact).
 
-## Key Features
+## How it works (`fraud_detection.py`)
 
-* Data preprocessing and cleaning
-* Handling highly imbalanced datasets
-* Training a machine learning classification model
-* Evaluating model performance using standard metrics
-* Simple and reproducible pipeline for fraud detection
+1. **Stratified 60 / 20 / 20 split** into train, validation and test sets, so each keeps the 0.17% fraud rate.
+2. **Class weights** (`class_weight="balanced"`) make the rare fraud class count more during training,
+   instead of resampling the data.
+3. **No data leakage:** the Logistic Regression scaler is fitted on the training set only (inside a scikit-learn pipeline).
+4. **Threshold tuning:** each model's decision threshold is chosen on the *validation* set to maximise F1,
+   instead of the default 0.5. The *test* set is used once, for the final numbers.
+   (Logistic Regression with balanced weights pushes scores very close to 1, so its tuned threshold rounds to 1.0.)
+5. **Evaluation** with precision, recall, F1, PR-AUC and ROC-AUC, plus the confusion matrix. PR-AUC is the main
+   metric because it ignores the huge number of easy true negatives.
 
----
+## Run it
 
-## Tech Stack
+```bash
+pip install -r requirements.txt
+curl -L -o creditcard.csv https://storage.googleapis.com/download.tensorflow.org/data/creditcard.csv
+python fraud_detection.py --data creditcard.csv --out reports
+```
+Prints the metrics and writes `reports/metrics.json` and `reports/pr_curve.png`. Takes about a minute.
 
-* Python
-* Pandas
-* NumPy
-* Scikit-learn
-* Matplotlib
+## Tests
 
----
+```bash
+pip install pytest
+pytest -q
+```
+Six fast tests run on a small synthetic dataset with the same columns: stratified split, threshold
+selection, confusion-matrix counts, scaler fitted on training data only, the full pipeline, and input validation.
+
+## CI
+
+`.github/workflows/ci.yml` runs the tests on every push, then downloads the real dataset, trains both
+models and uploads the reports.
 
 ## Dataset
 
-The dataset used for this project contains anonymized credit card transactions.
+Credit card transactions made by European cardholders in September 2013 (Machine Learning Group, ULB;
+also on Kaggle). Features `V1`–`V28` are PCA-anonymised; `Time` and `Amount` are raw; `Class` is 1 for fraud.
+The CSV (~150 MB) is not committed.
 
-Due to size limitations on GitHub, the dataset is **not included in the repository**.
+## Limitations and next steps
 
-Download the dataset from the link below:
-
-https://storage.googleapis.com/download.tensorflow.org/data/creditcard.csv
-
-After downloading, place `creditcard.csv` in the same project folder.
-
----
-
-## Project Structure
-
-financial-fraud-detection-ml/
-
-fraud_detection.py → Main machine learning script
-README.md → Project documentation
-.gitignore → Files ignored by Git
-
----
-
-## Installation
-
-Clone the repository:
-
-```
-git clone https://github.com/ianilbishnoi/financial-fraud-detection-ml.git
-```
-
-Navigate into the project folder:
-
-```
-cd financial-fraud-detection-ml
-```
-
-Install required dependencies:
-
-```
-pip install pandas scikit-learn matplotlib
-```
-
----
-
-## Running the Project
-
-Run the machine learning model using:
-
-```
-python fraud_detection.py
-```
-
-The script will:
-
-1. Load the dataset
-2. Train the fraud detection model
-3. Evaluate the model performance
-
----
-
-## Model Evaluation
-
-The trained model evaluates transactions using classification metrics.
-
-Example output:
-
-Precision: ~0.99
-Recall: ~0.79
-Accuracy: ~99%
-
-These metrics indicate that the model performs well in detecting fraudulent transactions while maintaining high overall accuracy.
-
----
-
-## Applications
-
-Fraud detection systems like this can be used in:
-
-* Banking systems
-* Online payment platforms
-* Fintech companies
-* Credit card transaction monitoring
-* Real-time financial risk detection
-
----
-
-## Future Improvements
-
-* Deploy the model as a web application
-* Add real-time transaction prediction
-* Experiment with advanced models (XGBoost, Neural Networks)
-* Build an interactive dashboard for fraud monitoring
-
----
-
-## Author
-
-Anil Bishnoi
+- The split is random, not time-based; a time-based split would better mimic real deployment.
+- The threshold optimises F1. A bank would pick it from the cost of a missed fraud versus a false alarm.
+- 18 of 99 frauds are still missed; gradient boosting (e.g. XGBoost) is the obvious next model to try.
